@@ -82,18 +82,7 @@ def get_loader(args):
         np.random.seed(np.random.get_state()[1][0] + worker_id)
 
     # Create Dataset and Dataloader
-    if args.dataset == 'sunrgbd':
-        from sunrgbd.sunrgbd_detection_dataset import SunrgbdDetectionVotesDataset
-        from sunrgbd.model_util_sunrgbd import SunrgbdDatasetConfig
-
-        DATASET_CONFIG = SunrgbdDatasetConfig()
-        TEST_DATASET = SunrgbdDetectionVotesDataset('val', num_points=args.num_point,
-                                                    augment=False,
-                                                    use_color=True if args.use_color else False,
-                                                    use_height=True if args.use_height else False,
-                                                    use_v1=(not args.use_sunrgbd_v2),
-                                                    data_root=args.data_root)
-    elif args.dataset == 'scannet':
+    if args.dataset == 'scannet':
         sys.path.append(os.path.join(ROOT_DIR, 'scannet'))
         from scannet.scannet_detection_dataset import ScannetDetectionDataset
         from scannet.model_util_scannet import ScannetDatasetConfig
@@ -166,11 +155,7 @@ def load_checkpoint(args, model):
 def evaluate_one_time(test_loader, DATASET_CONFIG, CONFIG_DICT, AP_IOU_THRESHOLDS, model, criterion, args, time=0):
     stat_dict = {}
     if args.num_decoder_layers > 0:
-        if args.dataset == 'sunrgbd':
-            _prefixes = ['last_', 'proposal_']
-            _prefixes += [f'{i}head_' for i in range(args.num_decoder_layers - 1)]
-            prefixes = _prefixes.copy() + ['all_layers_']
-        elif args.dataset == 'scannet':
+        if args.dataset == 'scannet':
             _prefixes = ['last_', 'proposal_']
             _prefixes += [f'{i}head_' for i in range(args.num_decoder_layers - 1)]
             prefixes = _prefixes.copy() + ['last_three_'] + ['all_layers_']
