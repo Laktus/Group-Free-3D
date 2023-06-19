@@ -59,7 +59,7 @@ def sigmoid(x):
     return s
 
 
-def parse_predictions(end_points, config_dict, prefix="", size_cls_agnostic=False):
+def parse_predictions(end_points, gt_data, config_dict, prefix="", size_cls_agnostic=False):
     """ Parse predictions to OBB parameters and suppress overlapping boxes
     
     Args:
@@ -121,7 +121,7 @@ def parse_predictions(end_points, config_dict, prefix="", size_cls_agnostic=Fals
     if config_dict['remove_empty_box']:
         # -------------------------------------
         # Remove predicted boxes without any point within them..
-        batch_pc = end_points['point_clouds'].cpu().numpy()[:, :, 0:3]  # B,N,3
+        batch_pc = gt_data['point_clouds'].cpu().numpy()[:, :, 0:3]  # B,N,3
         for i in range(bsize):
             pc = batch_pc[i, :, :]  # (N,3)
             for j in range(K):
@@ -206,7 +206,13 @@ def parse_predictions(end_points, config_dict, prefix="", size_cls_agnostic=Fals
                                        for j in range(pred_center.shape[1]) if
                                        pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']])
 
-    return batch_pred_map_cls
+    eval_dict = {}
+
+    eval_dict['pred_mask'] = pred_mask
+    return eval_dict, {'pred_corners_3d_upright_camera': pred_corners_3d_upright_camera,
+                       'sem_cls_probs': sem_cls_probs,
+                       'obj_prob': obj_prob,
+                       'pred_sem_cls': pred_sem_cls}
 
 
 def parse_groundtruths(end_points, config_dict, size_cls_agnostic):

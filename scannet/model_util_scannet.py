@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 import numpy as np
 import sys
 import os
@@ -60,6 +61,11 @@ class ScannetDatasetConfig(object):
     def class2size(self, pred_cls, residual):
         ''' Inverse function to size2class '''
         return self.mean_size_arr[pred_cls, :] + residual
+    
+    def class2size_cuda(self, pred_cls, residual):
+        ''' Inverse function to size2class '''
+        mean_size_arr = torch.from_numpy(self.mean_size_arr).to(residual.device).float()
+        return mean_size_arr[pred_cls.view(-1), :].view(*pred_cls.size(), 3) + residual
 
     def param2obb(self, center, heading_class, heading_residual, size_class, size_residual):
         heading_angle = self.class2angle(heading_class, heading_residual)
@@ -69,6 +75,16 @@ class ScannetDatasetConfig(object):
         obb[3:6] = box_size
         obb[6] = heading_angle * -1
         return obb
+    
+    def class2angle_cuda(self, pred_cls, residual, to_label_format=True):
+        ''' Inverse function to angle2class.'''
+        num_class = self.num_heading_bin
+        angle_per_class = 2 * np.pi / float(num_class)
+        angle_center = pred_cls.float() * angle_per_class
+        angle = angle_center + residual
+        if to_label_format:
+            angle = angle - 2*np.pi*(angle>np.pi).float()
+        return angle
 
 
 def rotate_aligned_boxes(input_boxes, rot_mat):

@@ -37,7 +37,7 @@ class GroupFreeDetector(nn.Module):
     def __init__(self, num_class, num_heading_bin, num_size_cluster, mean_size_arr,
                  input_feature_dim=0, width=1, bn_momentum=0.1, sync_bn=False, num_proposal=128, sampling='kps',
                  dropout=0.1, activation="relu", nhead=8, num_decoder_layers=6, dim_feedforward=2048,
-                 self_position_embedding='xyz_learned', cross_position_embedding='xyz_learned',
+                 self_position_embedding='loc_learned', cross_position_embedding='xyz_learned',
                  size_cls_agnostic=False):
         super().__init__()
 
