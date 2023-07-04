@@ -187,6 +187,8 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
                                               object_assignment)  # select (B,K) from (B,K2)
         heading_residual_normalized_label = heading_residual_label / (np.pi / num_heading_bin)
 
+
+
         # Ref: https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/3
         heading_label_one_hot = torch.cuda.FloatTensor(batch_size, heading_class_label.shape[1],
                                                        num_heading_bin).zero_()
@@ -195,6 +197,20 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
         heading_residual_normalized_error = torch.sum(
             end_points[f'{prefix}heading_residuals_normalized'] * heading_label_one_hot,
             -1) - heading_residual_normalized_label
+
+        for i in range(heading_label_one_hot.shape[0]):
+          for j in range(heading_label_one_hot.shape[1]):
+            heading_angle_gt = config.class2angle( \
+              heading_class_label[i, j].detach().cpu().numpy(), 
+              heading_residual_normalized_label[i, j].detach().cpu().numpy()
+            )
+            max_index = np.argmax(end_points[f'{prefix}heading_scores'][i,j].detach().cpu().numpy())
+            heading_angle_pred = config.class2angle( \
+              end_points[f'{prefix}heading_scores'][i,j].detach().cpu().numpy()[max_index], 
+              end_points[f'{prefix}heading_residuals_normalized'][i,j].detach().cpu().numpy()[max_index]
+            )
+            angle_diffs = heading_angle_gt - heading_angle_pred
+            end_points['angle_diffs'].append(angle_diffs)
 
         if heading_loss_type == 'smoothl1':
             heading_residual_normalized_loss = heading_delta * smoothl1_loss(heading_residual_normalized_error,
