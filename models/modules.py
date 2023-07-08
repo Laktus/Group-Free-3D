@@ -128,6 +128,10 @@ class PredictHead(nn.Module):
         self.size_residual_head = torch.nn.Conv1d(seed_feat_dim, num_size_cluster * 3, 1)
         self.sem_cls_scores_head = torch.nn.Conv1d(seed_feat_dim, self.num_class, 1)
 
+        # additional regression - MeiKoko
+        self.heading_sin_head = torch.nn.Conv1d(seed_feat_dim, 1, 1)
+        self.heading_cos_head = torch.nn.Conv1d(seed_feat_dim, 1, 1)
+
     def forward(self, features, base_xyz, end_points, prefix=''):
         """
         Args:
@@ -179,6 +183,13 @@ class PredictHead(nn.Module):
         end_points[f'{prefix}size_residuals'] = size_residuals
         end_points[f'{prefix}pred_size'] = pred_size
         end_points[f'{prefix}sem_cls_scores'] = sem_cls_scores
+
+        # heading with sin / cos
+        heading_sin_scores = torch.sin(self.heading_sin_head(net).transpose(2, 1))
+        heading_cos_scores = torch.cos(self.heading_cos_head(net).transpose(2, 1))
+        # CUSTOM
+        end_points[f'{prefix}box_sin_pred'] = heading_sin_scores
+        end_points[f'{prefix}box_cos_pred'] = heading_cos_scores
 
         # # used to check bbox size
         # l = pred_size[:, :, 0]

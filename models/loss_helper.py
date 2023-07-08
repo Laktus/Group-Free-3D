@@ -176,8 +176,9 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
             raise NotImplementedError
 
         # Compute heading loss
-        heading_class_label = torch.gather(end_points['heading_class_label'], 1,
+        """heading_class_label = torch.gather(end_points['heading_class_label'], 1,
                                            object_assignment)  # select (B,K) from (B,K2)
+        
         criterion_heading_class = nn.CrossEntropyLoss(reduction='none')
         heading_class_loss = criterion_heading_class(end_points[f'{prefix}heading_scores'].transpose(2, 1),
                                                      heading_class_label)  # (B,K)
@@ -194,25 +195,29 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
                                                        num_heading_bin).zero_()
         heading_label_one_hot.scatter_(2, heading_class_label.unsqueeze(-1),
                                        1)  # src==1 so it's *one-hot* (B,K,num_heading_bin)
+        
+        
         heading_residual_normalized_error = torch.sum(
             end_points[f'{prefix}heading_residuals_normalized'] * heading_label_one_hot,
-            -1) - heading_residual_normalized_label
+            -1) - heading_residual_normalized_label"""
+        # Compute heading loss
+        criterion_heading_class = nn.CrossEntropyLoss(reduction='none')
 
-        for i in range(heading_label_one_hot.shape[0]):
-          for j in range(heading_label_one_hot.shape[1]):
-            heading_angle_gt = config.class2angle( \
-              heading_class_label[i, j].detach().cpu().numpy(), 
-              heading_residual_normalized_label[i, j].detach().cpu().numpy()
-            )
-            max_index = np.argmax(end_points[f'{prefix}heading_scores'][i,j].detach().cpu().numpy())
-            heading_angle_pred = config.class2angle( \
-              end_points[f'{prefix}heading_scores'][i,j].detach().cpu().numpy()[max_index], 
-              end_points[f'{prefix}heading_residuals_normalized'][i,j].detach().cpu().numpy()[max_index]
-            )
-            angle_diffs = heading_angle_gt - heading_angle_pred
-            end_points['angle_diffs'].append(angle_diffs)
+        heading_class_label = torch.gather(end_points['heading_class_label'], 1, object_assignment) # select (B,K) from (B,K2)
+        heading_class_loss = criterion_heading_class(end_points[f'{prefix}heading_scores'].transpose(2,1), heading_class_label) # (B,K)
+        heading_class_loss = torch.sum(heading_class_loss * objectness_label)/(torch.sum(objectness_label)+1e-6)
 
-        if heading_loss_type == 'smoothl1':
+        heading_residual_label = torch.gather(end_points['heading_residual_label'], 1, object_assignment) # select (B,K) from (B,K2)
+        heading_residual_normalized_label = heading_residual_label / (np.pi/num_heading_bin)
+
+        # Ref: https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/3
+        from net_utils.nn_distance import nn_distance, huber_loss
+        heading_label_one_hot = torch.cuda.FloatTensor(batch_size, heading_class_label.shape[1], num_heading_bin).zero_()
+        heading_label_one_hot.scatter_(2, heading_class_label.unsqueeze(-1), 1) # src==1 so it's *one-hot* (B,K,num_heading_bin)
+        heading_residual_normalized_loss = huber_loss(torch.sum(end_points[f'{prefix}heading_residuals_normalized']*heading_label_one_hot, -1) - heading_residual_normalized_label, delta=1.0) # (B,K)
+        heading_residual_normalized_loss = torch.sum(heading_residual_normalized_loss*objectness_label)/(torch.sum(objectness_label)+1e-6)
+
+        """if heading_loss_type == 'smoothl1':
             heading_residual_normalized_loss = heading_delta * smoothl1_loss(heading_residual_normalized_error,
                                                                              delta=heading_delta)  # (B,K)
             heading_residual_normalized_loss = torch.sum(
@@ -222,7 +227,13 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
             heading_residual_normalized_loss = torch.sum(
                 heading_residual_normalized_loss * objectness_label) / (torch.sum(objectness_label) + 1e-6)
         else:
-            raise NotImplementedError
+            raise NotImplementedError"""
+
+        """print(prefix, assigned_gt_center[0])
+        print(prefix, heading_class_label[0])
+        print(prefix, objectness_label[0])"""
+        
+        #print(end_points[f'{prefix}heading_residuals_normalized'].shape, heading_label_one_hot.shape)
 
         # Compute size loss
         if size_cls_agnostic:
@@ -307,6 +318,41 @@ def compute_box_and_sem_cls_loss(end_points, config, num_decoder_layers,
     return box_loss_sum, sem_cls_loss_sum, end_points
 
 
+def heading_loss_NEW(end_points, num_decoder_layers):
+    prefixes = ['proposal_'] + ['last_'] + [f'{i}head_' for i in range(num_decoder_layers - 1)]
+
+    total = None
+
+    for prefix in prefixes:
+        object_assignment = end_points[f'{prefix}object_assignment']
+
+        criterion_heading_class = nn.L1Loss()
+
+        heading_sin_gt = torch.gather(end_points['box_sin'], 1,
+                                            object_assignment)
+
+        heading_cos_gt = torch.gather(end_points['box_cos'], 1,
+                                            object_assignment)
+
+        heading_sin_pred = torch.gather(end_points[f'{prefix}box_sin_pred'].squeeze(), 1,
+                                            object_assignment)
+
+        heading_cos_pred = torch.gather(end_points[f'{prefix}box_cos_pred'].squeeze(), 1,
+                                            object_assignment)
+
+        #print(heading_sin_gt.shape, end_points[f'{prefix}box_sin_pred'].shape)
+        sin_loss = criterion_heading_class(heading_sin_gt, heading_sin_pred)
+
+        cos_loss = criterion_heading_class(heading_cos_gt, heading_cos_pred)
+
+        if total is None:
+          total = sin_loss+cos_loss
+        else:
+          total += sin_loss+cos_loss
+
+    return total / len(prefixes)
+
+
 def get_loss(end_points, config, num_decoder_layers,
              query_points_generator_loss_coef, obj_loss_coef, box_loss_coef, sem_cls_loss_coef,
              query_points_obj_topk=5,
@@ -339,10 +385,13 @@ def get_loss(end_points, config, num_decoder_layers,
     end_points['sum_heads_box_loss'] = box_loss_sum
     end_points['sum_heads_sem_cls_loss'] = sem_cls_loss_sum
 
+    heading_loss = heading_loss_NEW(end_points, num_decoder_layers)
+    end_points['custom_heading_loss'] = heading_loss
+
     # means average proposal with prediction loss
     loss = query_points_generator_loss_coef * query_points_generation_loss + \
            1.0 / (num_decoder_layers + 1) * (
-                   obj_loss_coef * objectness_loss_sum + box_loss_coef * box_loss_sum + sem_cls_loss_coef * sem_cls_loss_sum)
+                   obj_loss_coef * objectness_loss_sum + box_loss_coef * box_loss_sum + sem_cls_loss_coef * sem_cls_loss_sum + heading_loss)
     loss *= 10
 
     end_points['loss'] = loss
