@@ -333,11 +333,11 @@ def heading_loss_NEW(end_points, num_decoder_layers):
 
         heading_cos_gt = torch.gather(end_points['box_cos'], 1,
                                             object_assignment)
-
-        heading_sin_pred = torch.gather(end_points[f'{prefix}box_sin_pred'].squeeze(), 1,
+        
+        heading_sin_pred = torch.gather(end_points[f'{prefix}box_sin_pred'].squeeze(-1), 1,
                                             object_assignment)
-
-        heading_cos_pred = torch.gather(end_points[f'{prefix}box_cos_pred'].squeeze(), 1,
+    
+        heading_cos_pred = torch.gather(end_points[f'{prefix}box_cos_pred'].squeeze(-1), 1,
                                             object_assignment)
 
         #print(heading_sin_gt.shape, end_points[f'{prefix}box_sin_pred'].shape)
